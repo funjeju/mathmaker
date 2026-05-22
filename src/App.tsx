@@ -3,7 +3,8 @@ import { MathJaxContext } from 'better-react-mathjax';
 import { Printer, Eye, EyeOff, Settings, Loader2 } from 'lucide-react';
 import { MathProblem } from './components/MathProblem';
 import { db } from './lib/firebase';
-import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+import { collection, getDocs, query, where, limit, addDoc } from 'firebase/firestore';
+import { generateProblemsFromAI } from './lib/gemini';
 
 function App() {
   const [curriculumData, setCurriculumData] = useState<any[]>([]);
@@ -60,40 +61,70 @@ function App() {
     return currentGrade.chapters.find((c: any) => c.chapter_id === selectedChapterId) || currentGrade.chapters[0];
   }, [currentGrade, selectedChapterId]);
 
-  // Fetch Problems from Firestore
+  // Smart Fetch & AI Generate
   const handleGenerate = async () => {
-    if (!selectedChapterId) return;
+    if (!selectedChapterId || !currentGrade || !currentChapter) return;
     setIsGenerating(true);
     
     try {
-      // In a real app, you would filter by difficulty as well: where("level", "==", difficulty)
-      // Here we just fetch by chapter_id for the demo
+      // 1. Fetch existing problems from DB
       const q = query(
         collection(db, 'problems'),
         where("chapter_id", "==", selectedChapterId),
-        limit(10)
+        where("level", "==", difficulty)
       );
       
       const snapshot = await getDocs(q);
       const problemsPool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      if (problemsPool.length === 0) {
-        alert("해당 단원의 문제가 아직 데이터베이스에 없습니다.");
-        setGeneratedProblems([]);
-        return;
+      let finalProblems = [...problemsPool];
+
+      // 2. If we don't have enough problems, generate more via AI
+      if (problemsPool.length < problemCount) {
+        const neededCount = problemCount - problemsPool.length;
+        const existingContext = problemsPool.map(p => p.question_text).join(" | ");
+        
+        console.log(`[AI Triggered] DB has ${problemsPool.length} problems. Generating ${neededCount} new problems via Gemini...`);
+        
+        const difficultyName = currentChapter.levels[`level_${difficulty}_name`] || "보통";
+        
+        const newProblemsRaw = await generateProblemsFromAI(
+          currentGrade.grade_name,
+          currentChapter.chapter_name,
+          difficulty,
+          difficultyName,
+          neededCount,
+          existingContext
+        );
+
+        // 3. Save newly generated problems to DB
+        const generatedSaved = [];
+        for (const rawProb of newProblemsRaw) {
+          const docRef = await addDoc(collection(db, 'problems'), {
+            chapter_id: selectedChapterId,
+            level: difficulty,
+            question_text: rawProb.question_text || "",
+            formula: rawProb.formula || "",
+            svg_data: rawProb.svg_data || null,
+            placeholder_example: rawProb.placeholder_example || "",
+            answer_value: rawProb.answer_value || "",
+            solution_steps: rawProb.solution_steps || [],
+            created_at: new Date().toISOString()
+          });
+          generatedSaved.push({ id: docRef.id, ...rawProb });
+        }
+        
+        finalProblems = [...finalProblems, ...generatedSaved];
       }
       
-      // Repeat or sample problems to match problemCount (for demo purposes)
-      const finalProblems = Array(problemCount).fill(null).map((_, i) => ({
-        ...problemsPool[i % problemsPool.length],
-        id: `gen-${i}-${Math.random().toString(36).substr(2, 9)}`
-      }));
+      // Shuffle array to make it dynamic, then pick the requested count
+      finalProblems = finalProblems.sort(() => 0.5 - Math.random()).slice(0, problemCount);
       
       setGeneratedProblems(finalProblems);
       setShowAnswers(false);
     } catch (error) {
-      console.error("Error fetching problems:", error);
-      alert("문제 생성 중 오류가 발생했습니다.");
+      console.error("Error fetching/generating problems:", error);
+      alert("문제 생성 중 오류가 발생했습니다. (API 키나 네트워크를 확인해주세요)");
     } finally {
       setIsGenerating(false);
     }
