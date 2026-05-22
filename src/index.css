@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@media print {
+  @page {
+    margin: 1cm;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    width: 100%;
+  }
+  .problem-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .level-header {
+    grid-column: 1 / -1;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}
