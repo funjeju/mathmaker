@@ -22,7 +22,7 @@ function App() {
     const fetchCurriculum = async () => {
       try {
         const gradesSnapshot = await getDocs(collection(db, 'curriculum'));
-        const grades = [];
+        const grades: any[] = [];
         
         for (const doc of gradesSnapshot.docs) {
           const gradeData = doc.data();
