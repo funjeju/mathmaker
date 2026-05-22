@@ -15,6 +15,10 @@ export default function Generator() {
   const [curriculumData, setCurriculumData] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
+  
+  // New Test Scope State
+  const [testScope, setTestScope] = useState<'chapter' | 'semester'>('chapter');
+
   const [problemCount, setProblemCount] = useState(10);
   const [levelDist, setLevelDist] = useState({ 1: 3, 2: 4, 3: 3 });
   const [testMode, setTestMode] = useState('mixed'); // 'mixed', 'calculation', 'application'
@@ -32,7 +36,6 @@ export default function Generator() {
     else if (problemCount === 20) setLevelDist({ 1: 6, 2: 8, 3: 6 });
   }, [problemCount]);
 
-  // Load Curriculum Data on Mount
   useEffect(() => {
     const fetchCurriculum = async () => {
       try {
@@ -79,7 +82,8 @@ export default function Generator() {
   };
 
   const handleGenerate = async () => {
-    if (!selectedChapterId || !currentGrade || !currentChapter) return;
+    if (!currentGrade) return;
+    if (testScope === 'chapter' && !currentChapter) return;
     
     const sum = levelDist[1] + levelDist[2] + levelDist[3];
     if (sum !== problemCount) {
@@ -90,27 +94,34 @@ export default function Generator() {
     setIsGenerating(true);
     
     try {
+      const scopeChapters = testScope === 'chapter' ? [currentChapter] : currentGrade.chapters;
+      const scopeChapterIds = scopeChapters.map((c: any) => c.chapter_id);
+      
       let finalProblems: any[] = [];
       let neededDist = { 1: 0, 2: 0, 3: 0 };
       let existingContexts: string[] = [];
+
+      // Fetch from all chapters in scope
+      let pool: any[] = [];
+      for (const cId of scopeChapterIds) {
+        let q;
+        if (testMode === 'calculation') {
+          q = query(collection(db, 'problems'), where("chapter_id", "==", cId), where("problem_type", "==", "calculation"));
+        } else if (testMode === 'application') {
+          q = query(collection(db, 'problems'), where("chapter_id", "==", cId), where("problem_type", "==", "application"));
+        } else {
+          q = query(collection(db, 'problems'), where("chapter_id", "==", cId));
+        }
+        const snapshot = await getDocs(q);
+        pool.push(...snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
 
       for (const lvl of [1, 2, 3] as const) {
         const targetCount = levelDist[lvl];
         if (targetCount === 0) continue;
 
-        let q;
-        if (testMode === 'calculation') {
-          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl), where("problem_type", "==", "calculation"));
-        } else if (testMode === 'application') {
-          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl), where("problem_type", "==", "application"));
-        } else {
-          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl));
-        }
-
-        const snapshot = await getDocs(q);
-        const pool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        const shuffled = pool.sort(() => 0.5 - Math.random());
+        const levelPool = pool.filter(p => p.level === lvl);
+        const shuffled = levelPool.sort(() => 0.5 - Math.random());
         const selected = shuffled.slice(0, targetCount);
         finalProblems.push(...selected);
 
@@ -124,7 +135,7 @@ export default function Generator() {
 
       if (totalNeeded > 0) {
         let recipeInstruction = "아래 지정된 난이도별 요구 개수에 맞춰 정확히 출제하세요:\n";
-        if (neededDist[1] > 0) recipeInstruction += `- 난이도 1(하, 기초 개념 및 아주 쉬운 연산): ${neededDist[1]}개\n`;
+        if (neededDist[1] > 0) recipeInstruction += `- 난이도 1(하, 기초 개념 및 쉬운 연산): ${neededDist[1]}개\n`;
         if (neededDist[2] > 0) recipeInstruction += `- 난이도 2(중, 기본 유형 및 평이한 문장제): ${neededDist[2]}개\n`;
         if (neededDist[3] > 0) recipeInstruction += `- 난이도 3(상, 심화 응용 및 복합 개념): ${neededDist[3]}개\n`;
 
@@ -136,11 +147,19 @@ export default function Generator() {
           recipeInstruction += `\n문제 유형을 계산형과 응용형으로 골고루 섞어주세요.`;
         }
 
-        console.log(`[AI Triggered] Generating ${totalNeeded} problems with recipe:\n${recipeInstruction}`);
+        let chapterContextForAI = "";
+        if (testScope === 'chapter') {
+          chapterContextForAI = `"${currentChapter.chapter_name}" 단원만 출제 (모든 문제의 chapter_id는 "${currentChapter.chapter_id}"로 통일)`;
+        } else {
+          const chList = currentGrade.chapters.map((c: any) => `- ${c.chapter_name} (chapter_id: "${c.chapter_id}")`).join('\n');
+          chapterContextForAI = `다음 학기 전체 단원들을 골고루 섞어서 종합 기말고사 형태로 출제하세요.\n${chList}\n각 문제마다 알맞은 단원의 chapter_id를 정확히 기입하세요.`;
+        }
+
+        console.log(`[AI Triggered] Generating ${totalNeeded} problems with scope: ${testScope}`);
         
         const newProblemsRaw = await generateProblemsFromAI(
           currentGrade.grade_name,
-          currentChapter.chapter_name,
+          chapterContextForAI,
           totalNeeded,
           recipeInstruction,
           existingContexts.join(" | ")
@@ -160,9 +179,10 @@ export default function Generator() {
           }
 
           const probType = rawProb.problem_type || (testMode === 'application' ? 'application' : 'calculation');
+          const finalChapterId = rawProb.chapter_id || currentChapter?.chapter_id || scopeChapterIds[0];
 
           const docRef = await addDoc(collection(db, 'problems'), {
-            chapter_id: selectedChapterId,
+            chapter_id: finalChapterId,
             level: pLevel,
             problem_type: probType,
             question_text: rawProb.question_text || "",
@@ -173,7 +193,7 @@ export default function Generator() {
             solution_steps: rawProb.solution_steps || [],
             created_at: new Date().toISOString()
           });
-          finalProblems.push({ id: docRef.id, ...rawProb, level: pLevel });
+          finalProblems.push({ id: docRef.id, ...rawProb, level: pLevel, chapter_id: finalChapterId });
         }
       }
       
@@ -198,11 +218,15 @@ export default function Generator() {
 
     setIsSaving(true);
     try {
+      const titleLabel = testScope === 'semester' 
+        ? `${currentGrade?.grade_name} 학기말 종합 모의고사` 
+        : `${currentGrade?.grade_name} ${currentChapter?.chapter_name}`;
+
       await addDoc(collection(db, 'worksheets'), {
         uid: user.uid,
-        title: `${currentGrade?.grade_name} ${currentChapter?.chapter_name}`,
+        title: titleLabel,
         grade_name: currentGrade?.grade_name,
-        chapter_name: currentChapter?.chapter_name,
+        chapter_name: testScope === 'semester' ? '종합평가' : currentChapter?.chapter_name,
         problem_ids: generatedProblems.map(p => p.id),
         created_at: new Date().toISOString()
       });
@@ -262,6 +286,27 @@ export default function Generator() {
           </div>
 
           <div className="p-6 flex-1 flex flex-col gap-6">
+            
+            {/* Test Scope Toggle */}
+            <div className="flex p-1 bg-slate-100 rounded-xl">
+              <button
+                onClick={() => setTestScope('chapter')}
+                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${
+                  testScope === 'chapter' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                단원 집중 학습
+              </button>
+              <button
+                onClick={() => setTestScope('semester')}
+                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${
+                  testScope === 'semester' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                학기말 종합고사
+              </button>
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">학년 선택</label>
               <select 
@@ -284,7 +329,7 @@ export default function Generator() {
               </select>
             </div>
 
-            {currentGrade && (
+            {currentGrade && testScope === 'chapter' && (
               <div>
                 <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">단원 선택</label>
                 <select 
@@ -298,6 +343,12 @@ export default function Generator() {
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+            
+            {currentGrade && testScope === 'semester' && (
+              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-indigo-800 text-sm font-medium">
+                🎉 현재 선택된 학년의 <strong>전체 단원</strong>을 골고루 섞어 학기말 기말고사 형태로 출제합니다.
               </div>
             )}
 
@@ -320,7 +371,7 @@ export default function Generator() {
               </div>
             </div>
 
-            {currentChapter && (
+            {currentGrade && (
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center mb-4">
                   <label className="text-sm font-bold text-slate-700 uppercase tracking-wider">난이도별 배분 (1~3)</label>
@@ -349,7 +400,7 @@ export default function Generator() {
               </div>
             )}
 
-            {currentChapter && (
+            {currentGrade && (
               <div>
                 <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">문제 유형 제한</label>
                 <select 
@@ -415,7 +466,9 @@ export default function Generator() {
               <div className="max-w-[1000px] mx-auto my-8 print:my-0 print:mx-0 p-8 sm:p-12 bg-white min-h-[297mm] shadow-xl print:shadow-none print:w-full print:max-w-none">
                 <div className="level-header border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
                   <div>
-                    <h2 className="text-3xl font-black text-slate-900 mb-2">{currentChapter?.chapter_name}</h2>
+                    <h2 className="text-3xl font-black text-slate-900 mb-2">
+                      {testScope === 'semester' ? '학기말 종합 모의고사' : currentChapter?.chapter_name}
+                    </h2>
                     <p className="text-lg text-slate-600 font-medium">{currentGrade?.grade_name} • 맞춤형 평가</p>
                   </div>
                   
@@ -432,18 +485,22 @@ export default function Generator() {
                 </div>
 
                 <div className="print-grid grid grid-cols-1 md:grid-cols-2 gap-6 print:gap-8">
-                  {generatedProblems.map((problem, idx) => (
-                    <div key={problem.id} className="relative">
-                      <div className="absolute top-4 right-4 bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded">
-                        LV {problem.level}
+                  {generatedProblems.map((problem, idx) => {
+                    const chName = currentGrade?.chapters.find((c: any) => c.chapter_id === problem.chapter_id)?.chapter_name;
+                    return (
+                      <div key={problem.id} className="relative mt-4">
+                        <div className="absolute -top-3 right-4 bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold px-2 py-1 rounded shadow-sm z-10 flex gap-2">
+                          {testScope === 'semester' && <span className="text-indigo-600">{chName}</span>}
+                          <span>LV {problem.level}</span>
+                        </div>
+                        <MathProblem 
+                          problem={problem} 
+                          index={idx} 
+                          showAnswers={showAnswers} 
+                        />
                       </div>
-                      <MathProblem 
-                        problem={problem} 
-                        index={idx} 
-                        showAnswers={showAnswers} 
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </>

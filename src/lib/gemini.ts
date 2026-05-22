@@ -35,7 +35,8 @@ ${existingContext || "없음"}
 반드시 다음 JSON 배열 규격을 준수할 것. (절대 다른 텍스트를 출력하지 말 것)
 [
   {
-    "level": "이 문제의 실제 난이도 (1~5 사이의 정수)",
+    "chapter_id": "해당 문제가 속한 단원의 정확한 ID 문자열",
+    "level": "이 문제의 실제 난이도 (1~3 사이의 정수)",
     "problem_type": "문제의 유형 ('calculation' = 단순 계산, 'application' = 실생활 응용/문장제, 'concept' = 개념 이해)",
     "question_text": "문제 지문 텍스트 (명확하고 자연스러운 한국어)",
     "formula": "수식이 필요한 경우 LaTeX 문법으로 작성 (필요 없으면 빈 문자열)",
