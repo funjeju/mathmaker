@@ -3,7 +3,7 @@ import { MathJaxContext } from 'better-react-mathjax';
 import { Printer, Eye, EyeOff, Settings, Loader2 } from 'lucide-react';
 import { MathProblem } from './components/MathProblem';
 import { db } from './lib/firebase';
-import { collection, getDocs, query, where, limit, addDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 import { generateProblemsFromAI } from './lib/gemini';
 
 function App() {
@@ -82,7 +82,7 @@ function App() {
       // 2. If we don't have enough problems, generate more via AI
       if (problemsPool.length < problemCount) {
         const neededCount = problemCount - problemsPool.length;
-        const existingContext = problemsPool.map(p => p.question_text).join(" | ");
+        const existingContext = problemsPool.map((p: any) => p.question_text).join(" | ");
         
         console.log(`[AI Triggered] DB has ${problemsPool.length} problems. Generating ${neededCount} new problems via Gemini...`);
         
