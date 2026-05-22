@@ -34,7 +34,18 @@ export default function Generator() {
     else if (problemCount === 10) setLevelDist({ 1: 3, 2: 4, 3: 3 });
     else if (problemCount === 15) setLevelDist({ 1: 5, 2: 5, 3: 5 });
     else if (problemCount === 20) setLevelDist({ 1: 6, 2: 8, 3: 6 });
+    else if (problemCount === 25) setLevelDist({ 1: 7, 2: 10, 3: 8 });
+    else if (problemCount === 30) setLevelDist({ 1: 9, 2: 12, 3: 9 });
+    else if (problemCount === 40) setLevelDist({ 1: 12, 2: 16, 3: 12 });
   }, [problemCount]);
+
+  useEffect(() => {
+    if (testScope === 'chapter') {
+      if (![5, 10, 15, 20].includes(problemCount)) setProblemCount(10);
+    } else {
+      if (![20, 25, 30, 40].includes(problemCount)) setProblemCount(20);
+    }
+  }, [testScope]);
 
   useEffect(() => {
     const fetchCurriculum = async () => {
@@ -355,7 +366,7 @@ export default function Generator() {
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">총 문항 수 선택</label>
               <div className="flex gap-2">
-                {[5, 10, 15, 20].map(num => (
+                {(testScope === 'chapter' ? [5, 10, 15, 20] : [20, 25, 30, 40]).map(num => (
                   <button
                     key={num}
                     onClick={() => setProblemCount(num)}
