@@ -74,12 +74,12 @@ export const MathProblem: React.FC<ProblemProps> = ({ problem, index, showAnswer
   };
 
   return (
-    <div className="problem-card bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col h-full hover:shadow-md transition-shadow">
-      <div className="flex items-start gap-3">
-        <span className="font-bold text-lg text-indigo-600 bg-indigo-50 w-8 h-8 flex items-center justify-center rounded-full shrink-0">
-          {index + 1}
+    <div className="problem-card bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full hover:shadow-md transition-shadow print:border-none print:shadow-none print:p-2 print:m-0 print:block">
+      <div className="flex items-start gap-2">
+        <span className="font-bold text-lg text-slate-900 shrink-0 mt-0.5 print:text-black mr-1">
+          {index + 1}.
         </span>
-        <div className="flex-1 text-slate-800 text-lg leading-relaxed">
+        <div className="flex-1 text-slate-800 text-[16px] leading-relaxed print:text-black">
           <MathJax>
             {problem.question_text}
           </MathJax>
@@ -87,26 +87,26 @@ export const MathProblem: React.FC<ProblemProps> = ({ problem, index, showAnswer
       </div>
       
       {problem.formula && (
-        <div className="mt-4 text-center text-xl font-medium">
+        <div className="mt-4 text-center text-xl font-medium print:text-black">
           <MathJax>{`\\[${problem.formula}\\]`}</MathJax>
         </div>
       )}
 
       {renderSVG()}
 
-      <div className="mt-auto pt-6 flex flex-col gap-3">
+      <div className="mt-auto pt-6 flex flex-col gap-3 print:pt-4 print:min-h-[120px]">
         <input 
           type="text"
-          className="w-full border-b-2 border-slate-300 bg-slate-50 px-4 py-3 text-center text-lg focus:outline-none focus:border-indigo-500 transition-colors rounded-t-md"
+          className="w-full border-b-2 border-slate-300 bg-slate-50 px-4 py-3 text-center text-lg focus:outline-none focus:border-indigo-500 transition-colors rounded-t-md print:hidden"
           placeholder={getSpoilerFreePlaceholder()}
           value={userAnswer}
           onChange={(e) => setUserAnswer(e.target.value)}
         />
         
         {showAnswers && (
-          <div className="mt-4 p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-            <div className="font-bold text-emerald-700 mb-2">정답: {problem.answer_value}</div>
-            <div className="text-sm text-emerald-600">
+          <div className="mt-4 p-4 bg-emerald-50 rounded-lg border border-emerald-100 print:bg-transparent print:border-slate-300 print:mt-0 print:border-dashed">
+            <div className="font-bold text-emerald-700 mb-2 print:text-black">정답: {problem.answer_value}</div>
+            <div className="text-sm text-emerald-600 print:text-black">
               {problem.solution_steps && problem.solution_steps.map((step: string, i: number) => (
                 <div key={i} className="mb-1">{step}</div>
               ))}

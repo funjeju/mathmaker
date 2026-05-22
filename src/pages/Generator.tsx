@@ -474,28 +474,24 @@ export default function Generator() {
               </div>
 
               {/* Worksheet Canvas */}
-              <div className="max-w-[1000px] mx-auto my-8 print:my-0 print:mx-0 p-8 sm:p-12 bg-white min-h-[297mm] shadow-xl print:shadow-none print:w-full print:max-w-none">
-                <div className="level-header border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-900 mb-2">
+              <div className="max-w-[1000px] mx-auto my-8 print:my-0 print:mx-0 p-8 sm:p-12 bg-white min-h-[297mm] shadow-xl print:shadow-none print:w-full print:max-w-none print:p-0">
+                
+                {/* Traditional Exam Header (Print & Web) */}
+                <div className="level-header border-2 border-slate-900 mb-8 print:mb-6 flex flex-col">
+                  <div className="border-b-2 border-slate-900 p-5 text-center">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-wider">
                       {testScope === 'semester' ? '학기말 종합 모의고사' : currentChapter?.chapter_name}
                     </h2>
-                    <p className="text-lg text-slate-600 font-medium">{currentGrade?.grade_name} • 맞춤형 평가</p>
+                    <p className="text-sm text-slate-600 font-medium mt-1">{currentGrade?.grade_name} • 맞춤형 평가</p>
                   </div>
-                  
-                  <div className="flex gap-4 print:gap-6 items-end text-lg font-bold text-slate-700">
-                    <div className="flex items-end gap-2">
-                      <span>학년/반:</span>
-                      <div className="border-b-2 border-slate-400 w-24"></div>
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <span>이름:</span>
-                      <div className="border-b-2 border-slate-400 w-32"></div>
-                    </div>
+                  <div className="flex divide-x-2 divide-slate-900 text-center font-bold text-slate-800 bg-slate-50 print:bg-transparent">
+                    <div className="flex-1 py-2.5">학년 / 반 <span className="ml-2 text-transparent underline decoration-slate-400 decoration-1 underline-offset-4">____학년 ____반</span></div>
+                    <div className="flex-1 py-2.5">성 명 <span className="ml-2 text-transparent underline decoration-slate-400 decoration-1 underline-offset-4">________</span></div>
+                    <div className="flex-1 py-2.5">점 수 <span className="ml-2 text-transparent underline decoration-slate-400 decoration-1 underline-offset-4">____ / 100</span></div>
                   </div>
                 </div>
 
-                <div className="print-grid grid grid-cols-1 md:grid-cols-2 gap-6 print:gap-8">
+                <div className="print-grid grid grid-cols-1 md:grid-cols-2 gap-6">
                   {generatedProblems.map((problem, idx) => {
                     const chName = currentGrade?.chapters.find((c: any) => c.chapter_id === problem.chapter_id)?.chapter_name;
                     return (

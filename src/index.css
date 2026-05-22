@@ -2,24 +2,26 @@
 
 @media print {
   @page {
-    margin: 1cm;
+    size: A4;
+    margin: 15mm;
   }
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background-color: white !important;
   }
   .print-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-    width: 100%;
+    display: block !important;
+    columns: 2;
+    column-gap: 3rem;
+    column-rule: 1px solid #cbd5e1;
   }
   .problem-card {
     break-inside: avoid;
     page-break-inside: avoid;
+    margin-bottom: 2.5rem;
   }
   .level-header {
-    grid-column: 1 / -1;
     break-after: avoid;
     page-break-after: avoid;
   }
