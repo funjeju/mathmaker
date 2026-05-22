@@ -3,12 +3,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
 export const generateProblemsFromAI = async (
-  gradeName: string,
-  chapterName: string,
-  difficultyLevel: number,
-  difficultyName: string,
+  grade: string,
+  chapter: string,
   count: number,
-  existingProblemsContext: string = ""
+  recipeInstruction: string,
+  existingContext: string = ""
 ) => {
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-pro",
@@ -21,20 +20,23 @@ export const generateProblemsFromAI = async (
 너는 대한민국 최고의 초등/중등 수학 교사이자 콘텐츠 개발자야.
 2022 개정 수학 교육과정을 완벽히 반영하여 다음 조건에 맞는 수학 문제를 정확히 ${count}개 생성해줘.
 
-[요청 조건]
-- 학년/학기: ${gradeName}
-- 단원명: ${chapterName}
-- 난이도: Level ${difficultyLevel} (${difficultyName})
+당신은 한국의 ${grade} 수학 교사입니다.
+현재 단원은 "${chapter}" 입니다.
 
-[중복 방지용 기존 문제 참고]
-아래와 유사한 문제는 피하고, 새로운 유형이나 다른 숫자, 다른 상황을 사용하여 문제를 만들어줘:
-${existingProblemsContext}
+다음 요구사항(출제 비율 및 난이도)에 맞추어 총 ${count}개의 수학 문제를 JSON 배열 형식으로 생성해주세요.
+
+[출제 요구사항]
+${recipeInstruction}
+
+[제외할 문제들 (기존 DB에 있는 문제들이므로 절대 똑같이 내지 말 것)]
+${existingContext || "없음"}
 
 [출력 데이터 형식 제약사항]
 반드시 다음 JSON 배열 규격을 준수할 것. (절대 다른 텍스트를 출력하지 말 것)
 [
   {
-    "level": ${difficultyLevel},
+    "level": "이 문제의 실제 난이도 (1~5 사이의 정수)",
+    "problem_type": "문제의 유형 ('calculation' = 단순 계산, 'application' = 실생활 응용/문장제, 'concept' = 개념 이해)",
     "question_text": "문제 지문 텍스트 (명확하고 자연스러운 한국어)",
     "formula": "수식이 필요한 경우 LaTeX 문법으로 작성 (필요 없으면 빈 문자열)",
     "svg_data": {

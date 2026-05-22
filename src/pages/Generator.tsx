@@ -17,6 +17,7 @@ export default function Generator() {
   const [selectedChapterId, setSelectedChapterId] = useState('');
   const [difficulty, setDifficulty] = useState(3);
   const [problemCount, setProblemCount] = useState(10);
+  const [testMode, setTestMode] = useState('mixed'); // 'single', 'mixed', 'calculation', 'application'
   
   const [generatedProblems, setGeneratedProblems] = useState<any[]>([]);
   const [showAnswers, setShowAnswers] = useState(false);
@@ -72,14 +73,23 @@ export default function Generator() {
     setIsGenerating(true);
     
     try {
-      const q = query(
-        collection(db, 'problems'),
-        where("chapter_id", "==", selectedChapterId),
-        where("level", "==", difficulty)
-      );
+      // Fetch problems from DB based on testMode
+      let q;
+      if (testMode === 'single') {
+        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", difficulty));
+      } else if (testMode === 'calculation') {
+        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("problem_type", "==", "calculation"));
+      } else if (testMode === 'application') {
+        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("problem_type", "==", "application"));
+      } else {
+        // mixed: fetch all for chapter
+        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId));
+      }
       
       const snapshot = await getDocs(q);
-      const problemsPool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let problemsPool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // For mixed mode, we might want to filter around the target difficulty roughly, but let's just use all and shuffle
       let finalProblems = [...problemsPool];
 
       if (problemsPool.length < problemCount) {
@@ -87,20 +97,38 @@ export default function Generator() {
         const existingContext = problemsPool.map((p: any) => p.question_text).join(" | ");
         const difficultyName = currentChapter.levels[`level_${difficulty}_name`] || "보통";
         
+        // Build recipe string for AI
+        let recipeInstruction = "";
+        if (testMode === 'single') {
+          recipeInstruction = `모든 문제를 Level ${difficulty} (${difficultyName}) 수준으로 출제하세요. 계산형과 응용형을 적절히 섞으세요.`;
+        } else if (testMode === 'mixed') {
+          recipeInstruction = `다양한 난이도를 섞어서 모의고사 형태로 출제하세요. (예: Level 1~2 기초 30%, Level 3 중간 40%, Level 4~5 심화 30%). 문제 유형도 계산형과 문장제 응용형을 골고루 섞으세요.`;
+        } else if (testMode === 'calculation') {
+          recipeInstruction = `모든 문제를 '단순 계산형(calculation)'으로만 출제하세요. 난이도는 Level ${difficulty}를 중심으로 하세요.`;
+        } else if (testMode === 'application') {
+          recipeInstruction = `모든 문제를 '실생활 응용/문장제(application)'으로만 출제하세요. 난이도는 Level ${difficulty}를 중심으로 하세요.`;
+        }
+        
+        console.log(`[AI Triggered] Generating ${neededCount} problems with recipe: ${recipeInstruction}`);
+        
         const newProblemsRaw = await generateProblemsFromAI(
           currentGrade.grade_name,
           currentChapter.chapter_name,
-          difficulty,
-          difficultyName,
           neededCount,
+          recipeInstruction,
           existingContext
         );
 
         const generatedSaved = [];
         for (const rawProb of newProblemsRaw) {
+          // AI might not return level if it fails, fallback to selected difficulty
+          const probLevel = rawProb.level || difficulty;
+          const probType = rawProb.problem_type || (testMode === 'application' ? 'application' : 'calculation');
+
           const docRef = await addDoc(collection(db, 'problems'), {
             chapter_id: selectedChapterId,
-            level: difficulty,
+            level: probLevel,
+            problem_type: probType,
             question_text: rawProb.question_text || "",
             formula: rawProb.formula || "",
             svg_data: rawProb.svg_data || null,
@@ -240,8 +268,20 @@ export default function Generator() {
 
             {currentChapter && (
               <div>
+                <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">출제 모드</label>
+                <select 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium appearance-none mb-4"
+                  value={testMode}
+                  onChange={(e) => setTestMode(e.target.value)}
+                >
+                  <option value="mixed">🎲 종합 모의고사 (난이도/유형 혼합)</option>
+                  <option value="single">🎯 특정 난이도 집중</option>
+                  <option value="calculation">🧮 단순 계산 집중 훈련</option>
+                  <option value="application">📝 문장제/실생활 응용 훈련</option>
+                </select>
+
                 <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider flex justify-between">
-                  <span>난이도 설정</span>
+                  <span>기준 난이도 설정</span>
                   <span className="text-indigo-600">Level {difficulty}</span>
                 </label>
                 <input 
@@ -252,7 +292,7 @@ export default function Generator() {
                   className="w-full accent-indigo-600"
                 />
                 <div className="text-xs text-slate-500 mt-2 bg-slate-100 p-3 rounded-md">
-                  {currentChapter.levels[`level_${difficulty}_name`]}
+                  {testMode === 'mixed' ? '선택한 레벨을 중심으로 위아래 난이도가 혼합 출제됩니다.' : currentChapter.levels[`level_${difficulty}_name`]}
                 </div>
               </div>
             )}
