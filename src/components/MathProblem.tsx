@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MathJax } from 'better-react-mathjax';
 import { FractionPie } from './FractionPie';
 import { LinearFunctionGraph } from './LinearFunctionGraph';
+import * as LucideIcons from 'lucide-react';
 
 interface ProblemProps {
   problem: any;
@@ -31,6 +32,33 @@ export const MathProblem: React.FC<ProblemProps> = ({ problem, index, showAnswer
       return (
         <div className="my-4">
           <LinearFunctionGraph />
+        </div>
+      );
+    }
+    
+    // A안: AI가 그려준 순수 SVG 코드 렌더링
+    if (problem.svg_data.type === 'raw_svg' && problem.svg_data.content) {
+      return (
+        <div 
+          className="my-4 flex justify-center items-center w-full max-w-[200px] mx-auto svg-container"
+          dangerouslySetInnerHTML={{ __html: problem.svg_data.content }} 
+        />
+      );
+    }
+
+    // B안: Lucide 아이콘을 이용한 초등용 일러스트 렌더링
+    if (problem.svg_data.type === 'icon' && problem.svg_data.keyword) {
+      // @ts-ignore
+      const IconComponent = LucideIcons[problem.svg_data.keyword] || LucideIcons.Star;
+      const count = problem.svg_data.count || 1;
+      
+      return (
+        <div className="my-6 flex flex-wrap justify-center gap-4">
+          {Array.from({ length: Math.min(count, 30) }).map((_, i) => (
+            <div key={i} className="text-amber-500 drop-shadow-sm">
+              <IconComponent size={40} strokeWidth={1.5} />
+            </div>
+          ))}
         </div>
       );
     }

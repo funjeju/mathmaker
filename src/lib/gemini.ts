@@ -38,11 +38,11 @@ ${existingProblemsContext}
     "question_text": "문제 지문 텍스트 (명확하고 자연스러운 한국어)",
     "formula": "수식이 필요한 경우 LaTeX 문법으로 작성 (필요 없으면 빈 문자열)",
     "svg_data": {
-       // 문제가 도형, 함수 그래프, 표 등의 시각적 자료를 필요로 할 때 작성. 필요 없다면 null.
-       // "type"은 "fraction_pie", "linear_function", "geometry_triangle", "coordinate_plane" 중 하나 또는 자유롭게 명명.
-       // SVG를 그리기 위한 데이터를 넣을 것 (프론트엔드에서 파싱 가능한 형태). 
-       // 예를 들어 삼각형이면 "type": "triangle", "base": 5, "height": 3 같은 속성이나, 직접적인 path 데이터를 넣을 수 있음.
-       // 만약 무료 일러스트나 아이콘이 필요하다면 "type": "icon", "keyword": "apple" 형태로 작성.
+       // 1. 기하, 도형, 좌표평면, 그래프 등 수학적 드로잉이 필요한 경우:
+       // "type": "raw_svg", "content": "<svg viewBox='0 0 200 200' width='100%' height='100%' stroke='black' fill='transparent'>...</svg>" 형태로 실제 동작하는 HTML SVG 코드를 작성. 크기에 맞게 viewBox를 설정할 것.
+       // 2. 사과, 자동차, 동물 등 초등학생용 사물 일러스트가 필요한 경우:
+       // "type": "icon", "keyword": "Apple", "count": 3 형태로 작성. 
+       // keyword는 반드시 영문 PascalCase 명사 사용 (예: Apple, Car, Bus, Dog, Cat, Bird, Pizza, Star, Heart, Cloud 등). count는 그려질 개수.
     },
     "placeholder_example": "예: 15 (학생이 정답 입력칸에서 볼 수 있는 정답 유출이 안 되는 가짜 힌트 예시)",
     "answer_value": "실제 정답 (예: 15, x=3, 2/5 등)",
