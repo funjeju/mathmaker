@@ -15,15 +15,22 @@ export default function Generator() {
   const [curriculumData, setCurriculumData] = useState<any[]>([]);
   const [selectedGradeId, setSelectedGradeId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
-  const [difficulty, setDifficulty] = useState(3);
   const [problemCount, setProblemCount] = useState(10);
-  const [testMode, setTestMode] = useState('mixed'); // 'single', 'mixed', 'calculation', 'application'
+  const [levelDist, setLevelDist] = useState({ 1: 3, 2: 4, 3: 3 });
+  const [testMode, setTestMode] = useState('mixed'); // 'mixed', 'calculation', 'application'
   
   const [generatedProblems, setGeneratedProblems] = useState<any[]>([]);
   const [showAnswers, setShowAnswers] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (problemCount === 5) setLevelDist({ 1: 2, 2: 2, 3: 1 });
+    else if (problemCount === 10) setLevelDist({ 1: 3, 2: 4, 3: 3 });
+    else if (problemCount === 15) setLevelDist({ 1: 5, 2: 5, 3: 5 });
+    else if (problemCount === 20) setLevelDist({ 1: 6, 2: 8, 3: 6 });
+  }, [problemCount]);
 
   // Load Curriculum Data on Mount
   useEffect(() => {
@@ -67,67 +74,96 @@ export default function Generator() {
     return currentGrade.chapters.find((c: any) => c.chapter_id === selectedChapterId) || currentGrade.chapters[0];
   }, [currentGrade, selectedChapterId]);
 
-  // Smart Fetch & AI Generate
+  const handleLevelChange = (lvl: 1|2|3, value: number) => {
+    setLevelDist(prev => ({ ...prev, [lvl]: value }));
+  };
+
   const handleGenerate = async () => {
     if (!selectedChapterId || !currentGrade || !currentChapter) return;
+    
+    const sum = levelDist[1] + levelDist[2] + levelDist[3];
+    if (sum !== problemCount) {
+      alert(`난이도별 문항 수의 합(${sum}개)이 총 문항 수(${problemCount}개)와 일치해야 합니다.`);
+      return;
+    }
+
     setIsGenerating(true);
     
     try {
-      // Fetch problems from DB based on testMode
-      let q;
-      if (testMode === 'single') {
-        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", difficulty));
-      } else if (testMode === 'calculation') {
-        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("problem_type", "==", "calculation"));
-      } else if (testMode === 'application') {
-        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("problem_type", "==", "application"));
-      } else {
-        // mixed: fetch all for chapter
-        q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId));
-      }
-      
-      const snapshot = await getDocs(q);
-      let problemsPool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // For mixed mode, we might want to filter around the target difficulty roughly, but let's just use all and shuffle
-      let finalProblems = [...problemsPool];
+      let finalProblems: any[] = [];
+      let neededDist = { 1: 0, 2: 0, 3: 0 };
+      let existingContexts: string[] = [];
 
-      if (problemsPool.length < problemCount) {
-        const neededCount = problemCount - problemsPool.length;
-        const existingContext = problemsPool.map((p: any) => p.question_text).join(" | ");
-        const difficultyName = currentChapter.levels[`level_${difficulty}_name`] || "보통";
-        
-        // Build recipe string for AI
-        let recipeInstruction = "";
-        if (testMode === 'single') {
-          recipeInstruction = `모든 문제를 Level ${difficulty} (${difficultyName}) 수준으로 출제하세요. 계산형과 응용형을 적절히 섞으세요.`;
-        } else if (testMode === 'mixed') {
-          recipeInstruction = `다양한 난이도를 섞어서 모의고사 형태로 출제하세요. (예: Level 1~2 기초 30%, Level 3 중간 40%, Level 4~5 심화 30%). 문제 유형도 계산형과 문장제 응용형을 골고루 섞으세요.`;
-        } else if (testMode === 'calculation') {
-          recipeInstruction = `모든 문제를 '단순 계산형(calculation)'으로만 출제하세요. 난이도는 Level ${difficulty}를 중심으로 하세요.`;
+      for (const lvl of [1, 2, 3] as const) {
+        const targetCount = levelDist[lvl];
+        if (targetCount === 0) continue;
+
+        let q;
+        if (testMode === 'calculation') {
+          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl), where("problem_type", "==", "calculation"));
         } else if (testMode === 'application') {
-          recipeInstruction = `모든 문제를 '실생활 응용/문장제(application)'으로만 출제하세요. 난이도는 Level ${difficulty}를 중심으로 하세요.`;
+          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl), where("problem_type", "==", "application"));
+        } else {
+          q = query(collection(db, 'problems'), where("chapter_id", "==", selectedChapterId), where("level", "==", lvl));
         }
+
+        const snapshot = await getDocs(q);
+        const pool = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        console.log(`[AI Triggered] Generating ${neededCount} problems with recipe: ${recipeInstruction}`);
+        const shuffled = pool.sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, targetCount);
+        finalProblems.push(...selected);
+
+        if (selected.length < targetCount) {
+          neededDist[lvl] = targetCount - selected.length;
+          existingContexts.push(...selected.map((p: any) => p.question_text));
+        }
+      }
+
+      const totalNeeded = neededDist[1] + neededDist[2] + neededDist[3];
+
+      if (totalNeeded > 0) {
+        let recipeInstruction = "아래 지정된 난이도별 요구 개수에 맞춰 정확히 출제하세요:\n";
+        if (neededDist[1] > 0) recipeInstruction += `- 난이도 1(하, 기초 개념 및 아주 쉬운 연산): ${neededDist[1]}개\n`;
+        if (neededDist[2] > 0) recipeInstruction += `- 난이도 2(중, 기본 유형 및 평이한 문장제): ${neededDist[2]}개\n`;
+        if (neededDist[3] > 0) recipeInstruction += `- 난이도 3(상, 심화 응용 및 복합 개념): ${neededDist[3]}개\n`;
+
+        if (testMode === 'calculation') {
+          recipeInstruction += `\n모든 문제를 '단순 계산형(calculation)'으로만 출제하세요.`;
+        } else if (testMode === 'application') {
+          recipeInstruction += `\n모든 문제를 '실생활 응용/문장제(application)'으로만 출제하세요.`;
+        } else {
+          recipeInstruction += `\n문제 유형을 계산형과 응용형으로 골고루 섞어주세요.`;
+        }
+
+        console.log(`[AI Triggered] Generating ${totalNeeded} problems with recipe:\n${recipeInstruction}`);
         
         const newProblemsRaw = await generateProblemsFromAI(
           currentGrade.grade_name,
           currentChapter.chapter_name,
-          neededCount,
+          totalNeeded,
           recipeInstruction,
-          existingContext
+          existingContexts.join(" | ")
         );
 
-        const generatedSaved = [];
+        let remainingNeeds = { ...neededDist };
+
         for (const rawProb of newProblemsRaw) {
-          // AI might not return level if it fails, fallback to selected difficulty
-          const probLevel = rawProb.level || difficulty;
+          let pLevel = rawProb.level;
+          if (![1, 2, 3].includes(pLevel)) {
+            if (remainingNeeds[1] > 0) pLevel = 1;
+            else if (remainingNeeds[2] > 0) pLevel = 2;
+            else pLevel = 3;
+          }
+          if (remainingNeeds[pLevel as 1|2|3] > 0) {
+             remainingNeeds[pLevel as 1|2|3]--;
+          }
+
           const probType = rawProb.problem_type || (testMode === 'application' ? 'application' : 'calculation');
 
           const docRef = await addDoc(collection(db, 'problems'), {
             chapter_id: selectedChapterId,
-            level: probLevel,
+            level: pLevel,
             problem_type: probType,
             question_text: rawProb.question_text || "",
             formula: rawProb.formula || "",
@@ -137,13 +173,11 @@ export default function Generator() {
             solution_steps: rawProb.solution_steps || [],
             created_at: new Date().toISOString()
           });
-          generatedSaved.push({ id: docRef.id, ...rawProb });
+          finalProblems.push({ id: docRef.id, ...rawProb, level: pLevel });
         }
-        
-        finalProblems = [...finalProblems, ...generatedSaved];
       }
       
-      finalProblems = finalProblems.sort(() => 0.5 - Math.random()).slice(0, problemCount);
+      finalProblems.sort((a, b) => a.level - b.level);
       setGeneratedProblems(finalProblems);
       setShowAnswers(false);
     } catch (error) {
@@ -166,10 +200,9 @@ export default function Generator() {
     try {
       await addDoc(collection(db, 'worksheets'), {
         uid: user.uid,
-        title: `${currentGrade?.grade_name} ${currentChapter?.chapter_name} (Level ${difficulty})`,
+        title: `${currentGrade?.grade_name} ${currentChapter?.chapter_name}`,
         grade_name: currentGrade?.grade_name,
         chapter_name: currentChapter?.chapter_name,
-        level: difficulty,
         problem_ids: generatedProblems.map(p => p.id),
         created_at: new Date().toISOString()
       });
@@ -193,6 +226,8 @@ export default function Generator() {
       </div>
     );
   }
+
+  const sumLevels = levelDist[1] + levelDist[2] + levelDist[3];
 
   return (
     <MathJaxContext>
@@ -266,39 +301,8 @@ export default function Generator() {
               </div>
             )}
 
-            {currentChapter && (
-              <div>
-                <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">출제 모드</label>
-                <select 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium appearance-none mb-4"
-                  value={testMode}
-                  onChange={(e) => setTestMode(e.target.value)}
-                >
-                  <option value="mixed">🎲 종합 모의고사 (난이도/유형 혼합)</option>
-                  <option value="single">🎯 특정 난이도 집중</option>
-                  <option value="calculation">🧮 단순 계산 집중 훈련</option>
-                  <option value="application">📝 문장제/실생활 응용 훈련</option>
-                </select>
-
-                <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider flex justify-between">
-                  <span>기준 난이도 설정</span>
-                  <span className="text-indigo-600">Level {difficulty}</span>
-                </label>
-                <input 
-                  type="range" 
-                  min="1" max="5" 
-                  value={difficulty}
-                  onChange={(e) => setDifficulty(parseInt(e.target.value))}
-                  className="w-full accent-indigo-600"
-                />
-                <div className="text-xs text-slate-500 mt-2 bg-slate-100 p-3 rounded-md">
-                  {testMode === 'mixed' ? '선택한 레벨을 중심으로 위아래 난이도가 혼합 출제됩니다.' : currentChapter.levels[`level_${difficulty}_name`]}
-                </div>
-              </div>
-            )}
-
             <div>
-              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">문항 수 ({problemCount}문제)</label>
+              <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">총 문항 수 선택</label>
               <div className="flex gap-2">
                 {[5, 10, 15, 20].map(num => (
                   <button
@@ -315,16 +319,63 @@ export default function Generator() {
                 ))}
               </div>
             </div>
+
+            {currentChapter && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex justify-between items-center mb-4">
+                  <label className="text-sm font-bold text-slate-700 uppercase tracking-wider">난이도별 배분 (1~3)</label>
+                  <span className={`text-sm font-bold ${sumLevels === problemCount ? 'text-emerald-600' : 'text-red-500'}`}>
+                    합계: {sumLevels} / {problemCount}
+                  </span>
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-16 text-sm font-medium text-slate-600">Level 1 (하)</span>
+                    <input type="range" min="0" max={problemCount} value={levelDist[1]} onChange={(e) => handleLevelChange(1, parseInt(e.target.value))} className="flex-1 accent-indigo-600" />
+                    <span className="w-6 text-right font-bold text-indigo-700">{levelDist[1]}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-16 text-sm font-medium text-slate-600">Level 2 (중)</span>
+                    <input type="range" min="0" max={problemCount} value={levelDist[2]} onChange={(e) => handleLevelChange(2, parseInt(e.target.value))} className="flex-1 accent-indigo-600" />
+                    <span className="w-6 text-right font-bold text-indigo-700">{levelDist[2]}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-16 text-sm font-medium text-slate-600">Level 3 (상)</span>
+                    <input type="range" min="0" max={problemCount} value={levelDist[3]} onChange={(e) => handleLevelChange(3, parseInt(e.target.value))} className="flex-1 accent-indigo-600" />
+                    <span className="w-6 text-right font-bold text-indigo-700">{levelDist[3]}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentChapter && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-600 mb-2 uppercase tracking-wider">문제 유형 제한</label>
+                <select 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium appearance-none"
+                  value={testMode}
+                  onChange={(e) => setTestMode(e.target.value)}
+                >
+                  <option value="mixed">🎲 혼합 출제 (계산 + 응용)</option>
+                  <option value="calculation">🧮 단순 계산만 집중</option>
+                  <option value="application">📝 문장제/응용만 집중</option>
+                </select>
+              </div>
+            )}
           </div>
           
           <div className="p-6 border-t border-slate-100 bg-slate-50">
             <button 
               onClick={handleGenerate}
-              disabled={isGenerating}
+              disabled={isGenerating || sumLevels !== problemCount}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : '학습지 생성하기'}
             </button>
+            {sumLevels !== problemCount && (
+              <p className="text-red-500 text-xs text-center mt-2 font-medium">난이도 합계를 총 문항수({problemCount})와 맞춰주세요.</p>
+            )}
           </div>
         </aside>
 
@@ -365,7 +416,7 @@ export default function Generator() {
                 <div className="level-header border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
                   <div>
                     <h2 className="text-3xl font-black text-slate-900 mb-2">{currentChapter?.chapter_name}</h2>
-                    <p className="text-lg text-slate-600 font-medium">{currentGrade?.grade_name} • Level {difficulty} 학습지</p>
+                    <p className="text-lg text-slate-600 font-medium">{currentGrade?.grade_name} • 맞춤형 평가</p>
                   </div>
                   
                   <div className="flex gap-4 print:gap-6 items-end text-lg font-bold text-slate-700">
@@ -382,12 +433,16 @@ export default function Generator() {
 
                 <div className="print-grid grid grid-cols-1 md:grid-cols-2 gap-6 print:gap-8">
                   {generatedProblems.map((problem, idx) => (
-                    <MathProblem 
-                      key={problem.id} 
-                      problem={problem} 
-                      index={idx} 
-                      showAnswers={showAnswers} 
-                    />
+                    <div key={problem.id} className="relative">
+                      <div className="absolute top-4 right-4 bg-slate-100 text-slate-400 text-xs font-bold px-2 py-1 rounded">
+                        LV {problem.level}
+                      </div>
+                      <MathProblem 
+                        problem={problem} 
+                        index={idx} 
+                        showAnswers={showAnswers} 
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
