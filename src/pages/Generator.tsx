@@ -8,6 +8,30 @@ import { generateProblemsFromAI } from '../lib/gemini';
 import { useAuth } from '../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 
+const LoadingSequence = () => {
+  const [msgIdx, setMsgIdx] = useState(0);
+  const messages = [
+    "데이터베이스에서 기존 문제를 확인하는 중...",
+    "선택한 난이도 배분에 맞춰 문제 구조를 설계하는 중...",
+    "AI가 부족한 유형의 새로운 문제를 출제하는 중...",
+    "수식과 도형 데이터를 렌더링하는 중...",
+    "거의 다 완성되었습니다! 시험지를 조립하는 중..."
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMsgIdx(prev => Math.min(prev + 1, messages.length - 1));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [messages.length]);
+
+  return (
+    <div className="text-indigo-600/80 font-semibold animate-pulse text-xl text-center">
+      {messages[msgIdx]}
+    </div>
+  );
+};
+
 export default function Generator() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -443,7 +467,12 @@ export default function Generator() {
 
         {/* Worksheet Viewer / Print Area */}
         <main className="flex-1 overflow-y-auto bg-slate-100 relative">
-          {generatedProblems.length > 0 ? (
+          {isGenerating ? (
+            <div className="h-full flex flex-col items-center justify-center print:hidden px-4">
+              <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mb-8" />
+              <LoadingSequence />
+            </div>
+          ) : generatedProblems.length > 0 ? (
             <>
               {/* Floating Actions */}
               <div className="sticky top-6 right-6 flex justify-end gap-3 z-10 print:hidden px-6">

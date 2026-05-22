@@ -16,11 +16,12 @@ export default function MyPage() {
       try {
         const q = query(
           collection(db, 'worksheets'),
-          where('uid', '==', user.uid),
-          orderBy('created_at', 'desc')
+          where('uid', '==', user.uid)
         );
         const snapshot = await getDocs(q);
-        setWorksheets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        docs.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setWorksheets(docs);
       } catch (err) {
         console.error("Error fetching worksheets:", err);
       } finally {
